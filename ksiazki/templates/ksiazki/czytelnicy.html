@@ -23,7 +23,7 @@
       <tbody>
         {% for c in czytelnicy %}
         <tr>
-          <td class="fw-semibold">{{ c.nazwisko }}</td>
+          <td class="fw-semibold"><a href="{% url 'czytelnik_szczegoly' c.pk %}">{{ c.nazwisko }}</a></td>
           <td>{{ c.imie }}</td>
           <td>{{ c.email }}</td>
           <td><code>{{ c.numer_karty }}</code></td>
