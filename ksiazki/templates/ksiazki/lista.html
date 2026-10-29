@@ -36,6 +36,7 @@
           <th>Rok</th>
           <th>Gatunek</th>
           <th class="text-center">Egz.</th>
+          <th class="text-center">Dostępne</th>
           <th class="text-end">Akcje</th>
         </tr>
       </thead>
@@ -53,7 +54,14 @@
             >{% else %}—{% endif %}
           </td>
           <td class="text-center">{{ k.liczba_egzemplarzy }}</td>
+          <td class="text-center">{{ k.dostepne }}</td>
           <td class="text-end text-nowrap">
+            <a
+              href="{% url 'wypozycz_ksiazke' k.pk %}"
+              class="btn btn-sm btn-outline-success{% if k.dostepne < 1 %} disabled{% endif %}"
+              {% if k.dostepne < 1 %}aria-disabled="true" tabindex="-1"{% endif %}
+              ><i class="bi bi-box-arrow-right"></i> Wypożycz</a
+            >
             <a
               href="{% url 'edytuj' k.pk %}"
               class="btn btn-sm btn-outline-primary"
@@ -68,7 +76,7 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="8" class="text-center text-muted py-4">Brak książek.</td>
+          <td colspan="9" class="text-center text-muted py-4">Brak książek.</td>
         </tr>
         {% endfor %}
       </tbody>

@@ -3,17 +3,16 @@
   <div class="col-lg-6">
     <div class="card border-danger shadow-sm">
       <div class="card-body">
-        <h1 class="h5">Usunąć książkę?</h1>
+        <h1 class="h5">Usunąć?</h1>
         <p>
-          Czy na pewno chcesz usunąć <strong>{{ ksiazka.tytul }}</strong> ({{
-          ksiazka.autor }})?
+          Czy na pewno chcesz usunąć <strong>{{ obiekt }}</strong>?
         </p>
         <form method="post">
           {% csrf_token %}
           <button class="btn btn-danger">
             <i class="bi bi-trash"></i> Tak, usuń
           </button>
-          <a href="{% url 'lista' %}" class="btn btn-secondary">Anuluj</a>
+          <a href="{% url powrot %}" class="btn btn-secondary">Anuluj</a>
         </form>
       </div>
     </div>
