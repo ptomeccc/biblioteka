@@ -133,6 +133,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Bootstrap nazywa błędy 'danger'
 MESSAGE_TAGS = {messages.ERROR: 'danger'}
 
-# Logowanie przez admina (wymaga konta is_staff), po zalogowaniu wracamy na listę
+# Logowanie przez admina (wymaga konta is_staff); po wylogowaniu wracamy na listę
 LOGIN_URL = 'admin:login'
-LOGIN_REDIRECT_URL = 'lista'
+LOGOUT_REDIRECT_URL = 'lista'

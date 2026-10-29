@@ -83,6 +83,18 @@ class DostepTest(TestCase):
             r = self.client.get(reverse(nazwa))
             self.assertRedirects(r, f"{reverse('admin:login')}?next={reverse(nazwa)}", fetch_redirect_response=False)
 
+    def test_gosc_nie_widzi_ani_nie_zmienia_czytelnikow_i_wypozyczen(self):
+        c = Czytelnik.objects.create(imie='J', nazwisko='K', email='j@k.pl', numer_karty='1')
+        k = Ksiazka.objects.create(tytul='A', autor='B')
+        w = Wypozyczenie.objects.create(ksiazka=k, czytelnik=c)
+        for nazwa in ('czytelnik_szczegoly', 'czytelnik_edytuj', 'czytelnik_usun'):
+            self.assertEqual(self.client.get(reverse(nazwa, args=[c.pk])).status_code, 302)
+        for nazwa, args in (('zwroc', [w.pk]), ('czytelnik_usun', [c.pk])):
+            self.assertEqual(self.client.post(reverse(nazwa, args=args)).status_code, 302)
+        w.refresh_from_db()
+        self.assertIsNone(w.data_zwrotu)
+        self.assertTrue(Czytelnik.objects.filter(pk=c.pk).exists())
+
     def test_gosc_nie_edytuje_ani_nie_usuwa(self):
         k = Ksiazka.objects.create(tytul='A', autor='B')
         for nazwa in ('edytuj', 'usun'):
@@ -121,5 +133,38 @@ class ListaTest(TestCase):
             r = self.client.get(reverse('lista'), {'sort': sort})
             self.assertEqual([k.tytul for k in r.context['ksiazki']], oczekiwane)
 
-    def test_nieznane_pole_sortowania_nie_psuje_strony(self):
-        self.assertEqual(self.client.get(reverse('lista'), {'sort': 'dodano; drop'}).status_code, 200)
+    def test_pole_spoza_whitelisty_wraca_do_tytulu(self):
+        for sort in ('-dodano', 'dodano; drop'):
+            r = self.client.get(reverse('lista'), {'sort': sort})
+            self.assertEqual(r.context['sort'], 'tytul')
+
+    def test_linki_paginacji_zachowuja_q_i_sort(self):
+        for i in range(11):
+            Ksiazka.objects.create(tytul=f'K{i:02}', autor='A')
+        r = self.client.get(reverse('lista'), {'q': 'K', 'sort': '-autor'})
+        self.assertContains(r, 'q=K&amp;sort=-autor&amp;page=2')
+
+
+class AdminTest(TestCase):
+    def setUp(self):
+        self.client.force_login(User.objects.create_superuser('a', 'a@a.pl', 'p'))
+        self.k = Ksiazka.objects.create(tytul='Lalka', autor='Prus', liczba_egzemplarzy=1)
+        self.c = Czytelnik.objects.create(imie='J', nazwisko='K', email='j@k.pl', numer_karty='1')
+        Wypozyczenie.objects.create(ksiazka=self.k, czytelnik=self.c)
+
+    def test_inline_nie_pozwala_przekroczyc_egzemplarzy(self):
+        dane = {
+            'tytul': 'Lalka', 'autor': 'Prus', 'isbn': '', 'gatunek': '', 'liczba_egzemplarzy': 1,
+            'wypozyczenia-TOTAL_FORMS': 2, 'wypozyczenia-INITIAL_FORMS': 1,
+            'wypozyczenia-MIN_NUM_FORMS': 0, 'wypozyczenia-MAX_NUM_FORMS': 1000,
+            'wypozyczenia-0-id': Wypozyczenie.objects.get().pk, 'wypozyczenia-0-ksiazka': self.k.pk,
+            'wypozyczenia-0-czytelnik': self.c.pk,
+            'wypozyczenia-0-data_wypozyczenia': timezone.localdate(),
+            'wypozyczenia-0-termin_zwrotu': timezone.localdate(),
+            'wypozyczenia-1-ksiazka': self.k.pk, 'wypozyczenia-1-czytelnik': self.c.pk,
+            'wypozyczenia-1-data_wypozyczenia': timezone.localdate(),
+            'wypozyczenia-1-termin_zwrotu': timezone.localdate(),
+        }
+        r = self.client.post(reverse('admin:ksiazki_ksiazka_change', args=[self.k.pk]), dane)
+        self.assertContains(r, 'Brak wolnych egzemplarzy')
+        self.assertEqual(Wypozyczenie.objects.count(), 1)
