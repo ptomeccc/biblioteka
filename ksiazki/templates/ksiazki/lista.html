@@ -3,10 +3,11 @@
   class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3"
 >
   <h1 class="h3 mb-0">
-    Lista książek <span class="badge bg-secondary">{{ ksiazki|length }}</span>
+    Lista książek <span class="badge bg-secondary">{{ ksiazki.paginator.count }}</span>
   </h1>
   <div class="d-flex gap-2">
     <form class="d-flex" method="get">
+      <input type="hidden" name="sort" value="{{ sort }}" />
       <input
         class="form-control me-2"
         type="search"
@@ -18,9 +19,11 @@
         <i class="bi bi-search"></i>
       </button>
     </form>
+    {% if user.is_authenticated %}
     <a href="{% url 'dodaj' %}" class="btn btn-success text-nowrap"
       ><i class="bi bi-plus-lg"></i> Dodaj</a
     >
+    {% endif %}
   </div>
 </div>
 
@@ -30,10 +33,12 @@
       <thead class="table-dark">
         <tr>
           <th>#</th>
-          <th>Tytuł</th>
-          <th>Autor</th>
+          {% with t=kolumny.0 a=kolumny.1 r=kolumny.2 %}
+          <th><a class="link-light text-decoration-none" href="{{ t.link }}">{{ t.etykieta }} <i class="bi {{ t.ikona }}"></i></a></th>
+          <th><a class="link-light text-decoration-none" href="{{ a.link }}">{{ a.etykieta }} <i class="bi {{ a.ikona }}"></i></a></th>
           <th>ISBN</th>
-          <th>Rok</th>
+          <th><a class="link-light text-decoration-none" href="{{ r.link }}">{{ r.etykieta }} <i class="bi {{ r.ikona }}"></i></a></th>
+          {% endwith %}
           <th>Gatunek</th>
           <th class="text-center">Egz.</th>
           <th class="text-center">Dostępne</th>
@@ -43,7 +48,7 @@
       <tbody>
         {% for k in ksiazki %}
         <tr>
-          <td>{{ forloop.counter }}</td>
+          <td>{{ ksiazki.start_index|add:forloop.counter0 }}</td>
           <td class="fw-semibold">{{ k.tytul }}</td>
           <td>{{ k.autor }}</td>
           <td><code>{{ k.isbn|default:"—" }}</code></td>
@@ -56,6 +61,7 @@
           <td class="text-center">{{ k.liczba_egzemplarzy }}</td>
           <td class="text-center">{{ k.dostepne }}</td>
           <td class="text-end text-nowrap">
+            {% if user.is_authenticated %}
             <a
               href="{% url 'wypozycz_ksiazke' k.pk %}"
               class="btn btn-sm btn-outline-success{% if k.dostepne < 1 %} disabled{% endif %}"
@@ -72,6 +78,7 @@
               class="btn btn-sm btn-outline-danger"
               ><i class="bi bi-trash"></i> Usuń</a
             >
+            {% endif %}
           </td>
         </tr>
         {% empty %}
@@ -83,4 +90,26 @@
     </table>
   </div>
 </div>
+
+{% if ksiazki.paginator.num_pages > 1 %}
+<nav class="mt-3" aria-label="Strony listy książek">
+  <ul class="pagination justify-content-center">
+    <li class="page-item{% if not ksiazki.has_previous %} disabled{% endif %}">
+      <a class="page-link" href="{% if ksiazki.has_previous %}?{{ qs }}&amp;page={{ ksiazki.previous_page_number }}{% else %}#{% endif %}">Poprzednia</a>
+    </li>
+    {% for p in strony %}
+    {% if p == ksiazki.paginator.ELLIPSIS %}
+    <li class="page-item disabled"><span class="page-link">{{ p }}</span></li>
+    {% else %}
+    <li class="page-item{% if p == ksiazki.number %} active{% endif %}">
+      <a class="page-link" href="?{{ qs }}&amp;page={{ p }}">{{ p }}</a>
+    </li>
+    {% endif %}
+    {% endfor %}
+    <li class="page-item{% if not ksiazki.has_next %} disabled{% endif %}">
+      <a class="page-link" href="{% if ksiazki.has_next %}?{{ qs }}&amp;page={{ ksiazki.next_page_number }}{% else %}#{% endif %}">Następna</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
 {% endblock %}

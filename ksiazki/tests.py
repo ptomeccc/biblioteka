@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -10,6 +11,7 @@ from .models import Czytelnik, Ksiazka, Wypozyczenie
 
 class WypozyczeniaTest(TestCase):
     def setUp(self):
+        self.client.force_login(User.objects.create_user('u', password='p'))
         self.k = Ksiazka.objects.create(tytul='Lalka', autor='Prus', liczba_egzemplarzy=1)
         self.c = Czytelnik.objects.create(imie='Jan', nazwisko='Kowalski', email='j@k.pl', numer_karty='1')
 
@@ -55,3 +57,114 @@ class WypozyczeniaTest(TestCase):
         r = self.client.post(reverse('czytelnik_dodaj'),
                              {'imie': 'A', 'nazwisko': 'B', 'email': 'j@k.pl', 'numer_karty': '2'})
         self.assertContains(r, 'text-danger')
+
+    def test_blokada_wypozyczenia_przez_widok(self):
+        self.wypozycz()
+        r = self.client.post(reverse('wypozycz'),
+                             {'ksiazka': self.k.pk, 'czytelnik': self.c.pk, 'termin_zwrotu': '2030-01-01'})
+        self.assertContains(r, 'Brak wolnych egzemplarzy')
+        self.assertEqual(Wypozyczenie.objects.count(), 1)
+
+    def test_szczegoly_czytelnika_z_historia(self):
+        w = self.wypozycz()
+        w.data_zwrotu = timezone.localdate()
+        w.save()
+        r = self.client.get(reverse('czytelnik_szczegoly', args=[self.c.pk]))
+        self.assertContains(r, 'Lalka')
+        self.assertEqual(len(r.context['historia']), 1)
+
+
+class DostepTest(TestCase):
+    ADRESY = ['dodaj', 'czytelnicy', 'wypozyczenia', 'wypozycz']
+
+    def test_gosc_widzi_liste_ale_nie_formularze(self):
+        self.assertEqual(self.client.get(reverse('lista')).status_code, 200)
+        for nazwa in self.ADRESY:
+            r = self.client.get(reverse(nazwa))
+            self.assertRedirects(r, f"{reverse('admin:login')}?next={reverse(nazwa)}", fetch_redirect_response=False)
+
+    def test_gosc_nie_widzi_ani_nie_zmienia_czytelnikow_i_wypozyczen(self):
+        c = Czytelnik.objects.create(imie='J', nazwisko='K', email='j@k.pl', numer_karty='1')
+        k = Ksiazka.objects.create(tytul='A', autor='B')
+        w = Wypozyczenie.objects.create(ksiazka=k, czytelnik=c)
+        for nazwa in ('czytelnik_szczegoly', 'czytelnik_edytuj', 'czytelnik_usun'):
+            self.assertEqual(self.client.get(reverse(nazwa, args=[c.pk])).status_code, 302)
+        for nazwa, args in (('zwroc', [w.pk]), ('czytelnik_usun', [c.pk])):
+            self.assertEqual(self.client.post(reverse(nazwa, args=args)).status_code, 302)
+        w.refresh_from_db()
+        self.assertIsNone(w.data_zwrotu)
+        self.assertTrue(Czytelnik.objects.filter(pk=c.pk).exists())
+
+    def test_gosc_nie_edytuje_ani_nie_usuwa(self):
+        k = Ksiazka.objects.create(tytul='A', autor='B')
+        for nazwa in ('edytuj', 'usun'):
+            self.assertEqual(self.client.get(reverse(nazwa, args=[k.pk])).status_code, 302)
+        self.client.post(reverse('usun', args=[k.pk]))
+        self.assertTrue(Ksiazka.objects.filter(pk=k.pk).exists())
+
+    def test_dodawanie_ksiazki_przez_zalogowanego(self):
+        self.client.force_login(User.objects.create_user('u', password='p'))
+        r = self.client.post(reverse('dodaj'), {'tytul': 'Nowa', 'autor': 'Autor', 'isbn': '', 'liczba_egzemplarzy': 2})
+        self.assertRedirects(r, reverse('lista'))
+        self.assertTrue(Ksiazka.objects.filter(tytul='Nowa', isbn=None).exists())
+
+    def test_dodawanie_bez_tytulu_pokazuje_blad(self):
+        self.client.force_login(User.objects.create_user('u', password='p'))
+        r = self.client.post(reverse('dodaj'), {'tytul': '', 'autor': 'A', 'liczba_egzemplarzy': 1})
+        self.assertContains(r, 'To pole jest wymagane')
+        self.assertEqual(Ksiazka.objects.count(), 0)
+
+
+class ListaTest(TestCase):
+    def test_paginacja_10_na_strone(self):
+        for i in range(11):
+            Ksiazka.objects.create(tytul=f'K{i:02}', autor='A')
+        r = self.client.get(reverse('lista'))
+        self.assertEqual(len(r.context['ksiazki']), 10)
+        self.assertContains(r, 'pagination')
+        self.assertEqual(len(self.client.get(reverse('lista'), {'page': 2}).context['ksiazki']), 1)
+        self.assertEqual(self.client.get(reverse('lista'), {'page': 'abc'}).status_code, 200)
+
+    def test_sortowanie_po_roku_z_pustymi_na_koncu(self):
+        Ksiazka.objects.create(tytul='Bez', autor='A', rok_wydania=None)
+        Ksiazka.objects.create(tytul='Stara', autor='A', rok_wydania=1900)
+        Ksiazka.objects.create(tytul='Nowa', autor='A', rok_wydania=2000)
+        for sort, oczekiwane in (('rok', ['Stara', 'Nowa', 'Bez']), ('-rok', ['Nowa', 'Stara', 'Bez'])):
+            r = self.client.get(reverse('lista'), {'sort': sort})
+            self.assertEqual([k.tytul for k in r.context['ksiazki']], oczekiwane)
+
+    def test_pole_spoza_whitelisty_wraca_do_tytulu(self):
+        for sort in ('-dodano', 'dodano; drop'):
+            r = self.client.get(reverse('lista'), {'sort': sort})
+            self.assertEqual(r.context['sort'], 'tytul')
+
+    def test_linki_paginacji_zachowuja_q_i_sort(self):
+        for i in range(11):
+            Ksiazka.objects.create(tytul=f'K{i:02}', autor='A')
+        r = self.client.get(reverse('lista'), {'q': 'K', 'sort': '-autor'})
+        self.assertContains(r, 'q=K&amp;sort=-autor&amp;page=2')
+
+
+class AdminTest(TestCase):
+    def setUp(self):
+        self.client.force_login(User.objects.create_superuser('a', 'a@a.pl', 'p'))
+        self.k = Ksiazka.objects.create(tytul='Lalka', autor='Prus', liczba_egzemplarzy=1)
+        self.c = Czytelnik.objects.create(imie='J', nazwisko='K', email='j@k.pl', numer_karty='1')
+        Wypozyczenie.objects.create(ksiazka=self.k, czytelnik=self.c)
+
+    def test_inline_nie_pozwala_przekroczyc_egzemplarzy(self):
+        dane = {
+            'tytul': 'Lalka', 'autor': 'Prus', 'isbn': '', 'gatunek': '', 'liczba_egzemplarzy': 1,
+            'wypozyczenia-TOTAL_FORMS': 2, 'wypozyczenia-INITIAL_FORMS': 1,
+            'wypozyczenia-MIN_NUM_FORMS': 0, 'wypozyczenia-MAX_NUM_FORMS': 1000,
+            'wypozyczenia-0-id': Wypozyczenie.objects.get().pk, 'wypozyczenia-0-ksiazka': self.k.pk,
+            'wypozyczenia-0-czytelnik': self.c.pk,
+            'wypozyczenia-0-data_wypozyczenia': timezone.localdate(),
+            'wypozyczenia-0-termin_zwrotu': timezone.localdate(),
+            'wypozyczenia-1-ksiazka': self.k.pk, 'wypozyczenia-1-czytelnik': self.c.pk,
+            'wypozyczenia-1-data_wypozyczenia': timezone.localdate(),
+            'wypozyczenia-1-termin_zwrotu': timezone.localdate(),
+        }
+        r = self.client.post(reverse('admin:ksiazki_ksiazka_change', args=[self.k.pk]), dane)
+        self.assertContains(r, 'Brak wolnych egzemplarzy')
+        self.assertEqual(Wypozyczenie.objects.count(), 1)

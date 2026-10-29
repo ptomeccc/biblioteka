@@ -1,0 +1,39 @@
+{% extends 'ksiazki/base.html' %} {% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h3 mb-0">{{ czytelnik }}</h1>
+    <div class="text-muted">{{ czytelnik.email }} · karta <code>{{ czytelnik.numer_karty }}</code></div>
+  </div>
+  <a href="{% url 'czytelnicy' %}" class="btn btn-secondary">Wróć</a>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header">Historia wypożyczeń <span class="badge bg-secondary">{{ historia|length }}</span></div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Książka</th>
+          <th>Wypożyczono</th>
+          <th>Termin</th>
+          <th>Zwrot</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in historia %}
+        <tr{% if w.po_terminie %} class="table-danger"{% endif %}>
+          <td class="fw-semibold">{{ w.ksiazka.tytul }}</td>
+          <td>{{ w.data_wypozyczenia|date:"d.m.Y" }}</td>
+          <td>{{ w.termin_zwrotu|date:"d.m.Y" }}</td>
+          <td>{% if w.aktywne %}<span class="badge text-bg-warning">aktywne</span>{% else %}{{ w.data_zwrotu|date:"d.m.Y" }}{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="4" class="text-center text-muted py-4">Brak wypożyczeń.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

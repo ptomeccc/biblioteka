@@ -9,6 +9,7 @@ urlpatterns = [
     path('<int:pk>/usun/', views.usun, name='usun'),
     path('<int:pk>/wypozycz/', views.wypozycz, name='wypozycz_ksiazke'),
     path('czytelnicy/', views.czytelnicy, name='czytelnicy'),
+    path('czytelnicy/<int:pk>/', views.czytelnik_szczegoly, name='czytelnik_szczegoly'),
     path('czytelnicy/dodaj/', views.czytelnik_dodaj, name='czytelnik_dodaj'),
     path('czytelnicy/<int:pk>/edytuj/', views.czytelnik_edytuj, name='czytelnik_edytuj'),
     path('czytelnicy/<int:pk>/usun/', views.czytelnik_usun, name='czytelnik_usun'),
